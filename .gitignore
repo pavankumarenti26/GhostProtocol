@@ -1,0 +1,48 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Organizer secrets
+instance/
+instances/
+secret.bin
+metadata.json
+*.secret
+*.key
+
+# Backups / temporary development files
+*.bak
+*_backup.*
+app_current_backup.txt
+
+# Local player artifacts
+player-artifact.bin
+
+# Potentially generated local telemetry
+telemetry.json
+
+# Organizer-only helpers
+artifact/flag.py
+artifact/instance.py
+
+# Local environments
+.env
+.venv/
+venv/
+
+# Logs
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+crypto_test.py
+generate_instance.py
+generate_team.py
+verify_instance.py
+verify_team.py
+crypto_test.py

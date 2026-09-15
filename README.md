@@ -1,76 +1,93 @@
-﻿# Ghost Protocol
+﻿# 👻 Ghost Protocol
 
-A multi-stage cryptographic and reverse-engineering CTF challenge.
-
-## Challenge Chain
-
-Recon
-- Hidden API
-- Custom GP91 binary
-- Custom VM
-- Stage derivation
-- AES-GCM nonce reuse
-- CBC padding oracle
-- Final cryptographic stage
-- FLAG
-
-## Requirements
-
-- Docker Desktop
-- Python 3.12+
-- Git
-- Python requests package
-
-## Run Locally
-
-Build the image:
-
-    docker build -t ghost-protocol .
-
-Run the challenge:
-
-    .\run_team.ps1 -Team team01 -Port 5000
-
-The service will be available at:
-
-http://localhost:5000
-
-## Artifact
-
-The challenge artifact is:
-
-artifact/gp-core-0917.bin
-
-It uses the custom GP91 binary format and contains code executed by a custom virtual machine.
-
-## Intended Skills
-
-- Web reconnaissance
-- Endpoint discovery
-- Binary analysis
-- Reverse engineering
-- Custom VM analysis
-- Hash-chain reasoning
-- AES-GCM nonce-reuse exploitation
-- CBC padding-oracle exploitation
-- Cryptographic protocol analysis
-
-## Objective
-
-Progress through the protocol and recover the final flag.
-
-Each stage provides information required to reach the next stage.
-
-## Rules
-
-Only interact with infrastructure explicitly provided for this challenge.
-
-Do not attack unrelated systems, services, accounts, or infrastructure.
-
-Do not attempt to access other teams' challenge instances.
-
-Good luck.
+> **Something is wrong with the document service.**
+>
+> The system says everything is operational.
+> The artifact looks harmless.
+> The cryptography looks familiar.
+>
+> But somewhere inside the protocol...
+>
+> **there is a ghost.**
 
 ---
 
-Ghost Protocol
+## 🎯 Objective
+
+Find the flag.
+
+That's it.
+
+No source code is provided during the challenge.  
+No secrets are handed to you.
+
+Investigate the service, understand the artifact, and follow the trail.
+
+---
+
+## 🛰️ The Challenge
+
+**Ghost Protocol** is a multi-stage CTF challenge combining:
+
+- 🔎 Web Recon
+- 🧩 Custom VM / Reverse Engineering
+- 🔐 Cryptography
+- 📡 Protocol Analysis
+- 🧠 Logic & Exploitation
+
+Every stage gives you just enough information to reach the next one.
+
+Miss something?
+
+You may be staring directly at the answer without realizing it.
+
+---
+
+## 🚪 Starting Point
+
+The service exposes a small API.
+
+Begin with:
+
+`/api/status`
+
+Then start looking for things the application was never supposed to make interesting.
+
+---
+
+## 🗺️ Your Mission
+
+Think of the challenge as a chain:
+
+```text
+        ┌─────────────┐
+        │   Web API   │
+        └──────┬──────┘
+               │
+               ▼
+        ┌─────────────┐
+        │   Artifact  │
+        └──────┬──────┘
+               │
+               ▼
+        ┌─────────────┐
+        │  Custom VM  │
+        └──────┬──────┘
+               │
+               ▼
+        ┌─────────────┐
+        │    Crypto   │
+        └──────┬──────┘
+               │
+               ▼
+        ┌─────────────┐
+        │    Sync     │
+        └──────┬──────┘
+               │
+               ▼
+        ┌─────────────┐
+        │    Ghost    │
+        └──────┬──────┘
+               │
+               ▼
+          🚩 FLAG 🚩

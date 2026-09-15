@@ -1,1 +1,76 @@
-﻿# Ghost Protocol`n`nA multi-stage cryptographic and reverse-engineering CTF challenge.`n`n## Challenge Chain`n`nRecon -> Hidden API -> GP91 Binary -> Custom VM -> Stage Derivation -> AES-GCM Nonce Reuse -> CBC Padding Oracle -> Final Cryptographic Stage -> FLAG`n`n## Requirements`n`n- Docker Desktop`n- Python 3.12+`n- Git`n- Python requests package`n`n## Run Locally`n`nBuild the image:`n`n    docker build -t ghost-protocol .`n`nRun the challenge:`n`n    .\run_team.ps1 -Team team01 -Port 5000`n`nThe service will be available at http://localhost:5000.`n`n## Artifact`n`nThe challenge artifact is artifact/gp-core-0917.bin.`n`nIt uses the custom GP91 binary format and contains code executed by a custom virtual machine.`n`n## Intended Skills`n`n- Web reconnaissance`n- Endpoint discovery`n- Binary analysis`n- Reverse engineering`n- Custom VM analysis`n- Hash-chain reasoning`n- AES-GCM nonce-reuse exploitation`n- CBC padding-oracle exploitation`n- Cryptographic protocol analysis`n`n## Objective`n`nProgress through the protocol and recover the final flag.`n`nEach stage provides information required to reach the next stage.`n`n## Rules`n`nOnly interact with infrastructure explicitly provided for this challenge.`n`nDo not attack unrelated systems, services, accounts, or infrastructure.`n`nDo not attempt to access other teams challenge instances.`n`n## Challenge Philosophy`n`nGhost Protocol is built around chained weaknesses in an intentionally flawed cryptographic protocol.`n`nThe individual primitives are not necessarily broken. The implementation and protocol composition are.`n`nGood luck.`n`n---`n`nGhost Protocol
+﻿# Ghost Protocol
+
+A multi-stage cryptographic and reverse-engineering CTF challenge.
+
+## Challenge Chain
+
+Recon
+- Hidden API
+- Custom GP91 binary
+- Custom VM
+- Stage derivation
+- AES-GCM nonce reuse
+- CBC padding oracle
+- Final cryptographic stage
+- FLAG
+
+## Requirements
+
+- Docker Desktop
+- Python 3.12+
+- Git
+- Python requests package
+
+## Run Locally
+
+Build the image:
+
+    docker build -t ghost-protocol .
+
+Run the challenge:
+
+    .\run_team.ps1 -Team team01 -Port 5000
+
+The service will be available at:
+
+http://localhost:5000
+
+## Artifact
+
+The challenge artifact is:
+
+artifact/gp-core-0917.bin
+
+It uses the custom GP91 binary format and contains code executed by a custom virtual machine.
+
+## Intended Skills
+
+- Web reconnaissance
+- Endpoint discovery
+- Binary analysis
+- Reverse engineering
+- Custom VM analysis
+- Hash-chain reasoning
+- AES-GCM nonce-reuse exploitation
+- CBC padding-oracle exploitation
+- Cryptographic protocol analysis
+
+## Objective
+
+Progress through the protocol and recover the final flag.
+
+Each stage provides information required to reach the next stage.
+
+## Rules
+
+Only interact with infrastructure explicitly provided for this challenge.
+
+Do not attack unrelated systems, services, accounts, or infrastructure.
+
+Do not attempt to access other teams' challenge instances.
+
+Good luck.
+
+---
+
+Ghost Protocol

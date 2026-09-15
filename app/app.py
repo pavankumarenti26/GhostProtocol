@@ -1,59 +1,86 @@
-﻿from flask import Flask, jsonify, request, send_from_directory
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+﻿import os
 import hashlib
-import os
+import secrets
+from flask import Flask, request, jsonify, send_from_directory
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 
 app = Flask(__name__)
 
-ARTIFACT_DIR = "/app/artifact"
-SECRET_PATH = os.environ.get("INSTANCE_SECRET", "/app/instance/secret.bin")
-PUBLIC_SEED = bytes.fromhex(os.environ.get("PUBLIC_SEED", ""))
-VM_STATE = bytes.fromhex(os.environ.get("VM_STATE", ""))
+INSTANCE_SECRET_PATH = os.environ.get(
+    "INSTANCE_SECRET",
+    "/app/instance/secret.bin"
+)
 
-with open(SECRET_PATH, "rb") as f:
-    INSTANCE_SECRET = f.read()
+PUBLIC_SEED = bytes.fromhex(
+    os.environ.get("PUBLIC_SEED", "00" * 16)
+)
 
-if len(INSTANCE_SECRET) != 32:
-    raise RuntimeError("INSTANCE_SECRET must be exactly 32 bytes")
+VM_STATE = bytes.fromhex(
+    os.environ.get("VM_STATE", "00" * 32)
+)
 
-if len(PUBLIC_SEED) != 16:
-    raise RuntimeError("PUBLIC_SEED must be exactly 16 bytes")
+# ---------------------------------------------------------
+# Demo/cloud fallback secret
+# ---------------------------------------------------------
+# In the real competition deployment, provide a unique
+# secret file for every team.
+if os.path.exists(INSTANCE_SECRET_PATH):
+    with open(INSTANCE_SECRET_PATH, "rb") as f:
+        INSTANCE_SECRET = f.read()
+else:
+    INSTANCE_SECRET = secrets.token_bytes(32)
 
+# ---------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------
 
-# ============================================================
-# Internal cryptographic state
-# ============================================================
-
-def stage_value():
-    return hashlib.sha256(
-        b"GhostProtocol-PublicStage" +
-        PUBLIC_SEED +
-        VM_STATE
-    ).digest()
-
-
-def private_key():
-    return hashlib.sha256(
-        b"GhostProtocol-PrivateStage" +
-        INSTANCE_SECRET +
-        stage_value()
-    ).digest()
+def sha256(data):
+    return hashlib.sha256(data).digest()
 
 
-# ============================================================
-# Recon
-# ============================================================
+def pkcs7_unpad(data):
+    if not data:
+        raise ValueError("empty data")
 
-@app.get("/")
+    pad = data[-1]
+
+    if pad < 1 or pad > 16:
+        raise ValueError("bad padding")
+
+    if data[-pad:] != bytes([pad]) * pad:
+        raise ValueError("bad padding")
+
+    return data[:-pad]
+
+
+def aes_cbc_decrypt(iv, ciphertext, key):
+    cipher = Cipher(
+        algorithms.AES(key),
+        modes.CBC(iv),
+        backend=default_backend()
+    )
+
+    decryptor = cipher.decryptor()
+
+    return decryptor.update(ciphertext) + decryptor.finalize()
+
+
+# ---------------------------------------------------------
+# Routes
+# ---------------------------------------------------------
+
+@app.route("/")
 def index():
     return jsonify({
-        "service": "document-service",
-        "status": "operational"
+        "service": "Ghost Protocol",
+        "status": "operational",
+        "message": "Something is hiding inside the protocol."
     })
 
 
-@app.get("/api/status")
+@app.route("/api/status")
 def status():
     return jsonify({
         "service": "document-service",
@@ -61,51 +88,43 @@ def status():
     })
 
 
-# ============================================================
-# Artifact discovery
-# ============================================================
-
-@app.get("/api/artifact")
+@app.route("/api/artifact")
 def artifact():
-    artifact_id = request.args.get("id", "")
+    artifact_id = request.args.get("id")
 
     if artifact_id != "gp-core-0917":
-        return jsonify({"error": "artifact not found"}), 404
+        return jsonify({
+            "error": "artifact not found"
+        }), 404
 
     return jsonify({
-        "id": artifact_id,
-        "location": "/artifacts/gp-core-0917.bin",
-        "format": "GP91"
+        "id": "gp-core-0917",
+        "location": "/artifacts/gp-core-0917.bin"
     })
 
 
-@app.get("/artifacts/<path:name>")
-def artifacts(name):
-    if name != "gp-core-0917.bin":
-        return jsonify({"error": "not found"}), 404
-
+@app.route("/artifacts/<path:filename>")
+def artifacts(filename):
     return send_from_directory(
-        ARTIFACT_DIR,
-        name,
-        as_attachment=True
+        "/app/artifact",
+        filename
     )
 
 
-# ============================================================
-# Stage 1
-# ============================================================
-
-@app.get("/api/stage")
+@app.route("/api/stage")
 def stage():
-    supplied = request.args.get("value", "")
+    value = request.args.get("value", "")
 
-    if len(supplied) != 64:
-        return jsonify({"error": "invalid stage"}), 403
+    expected = sha256(
+        b"GhostProtocol-PublicStage" +
+        PUBLIC_SEED +
+        VM_STATE
+    ).hex()
 
-    expected = stage_value().hex()
-
-    if supplied.lower() != expected:
-        return jsonify({"error": "invalid stage"}), 403
+    if value.lower() != expected:
+        return jsonify({
+            "status": "rejected"
+        }), 403
 
     return jsonify({
         "status": "accepted",
@@ -113,227 +132,198 @@ def stage():
     })
 
 
-# ============================================================
-# Stage 2
-#
-# Intentional AES-GCM nonce reuse.
-# ============================================================
-
-@app.get("/api/telemetry")
+@app.route("/api/telemetry")
 def telemetry():
-    key = private_key()
+    # Deliberate nonce reuse for the CTF crypto stage.
 
-    nonce = hashlib.sha256(
-        b"GhostProtocol-Telemetry-Nonce" +
+    key = sha256(
+        b"GhostProtocol-Telemetry" +
         INSTANCE_SECRET
-    ).digest()[:12]
+    )
 
-    token = INSTANCE_SECRET[:10]
+    nonce = b"GhostTelemetryNonce"
 
-    prefix = b"GP-TELEMETRY-V1:STAGE=PRIVATE;TOKEN="
-
-    known_plaintext = prefix + token
+    known_plaintext = (
+        b"GP-TELEMETRY-V1:STAGE=PUBLIC;TOKEN="
+        + b"A" * 10
+    )
 
     protected_plaintext = (
-        prefix +
-        token +
-        b";NEXT=SYNC"
+        b"GP-TELEMETRY-V1:STAGE=PRIVATE;TOKEN="
+        + INSTANCE_SECRET[:10]
     )
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     aes = AESGCM(key)
 
     known = aes.encrypt(
         nonce,
         known_plaintext,
-        b"GP-TELEMETRY-V1"
+        None
     )
 
     protected = aes.encrypt(
         nonce,
         protected_plaintext,
-        b"GP-TELEMETRY-V1"
+        None
     )
 
     return jsonify({
         "algorithm": "AES-GCM",
         "known": known.hex(),
-        "nonce": nonce.hex(),
         "protected": protected.hex(),
+        "nonce": nonce.hex(),
         "version": 1
     })
 
 
-# ============================================================
-# Stage 3
-#
-# CBC padding oracle.
-# ============================================================
+@app.route("/api/sync")
+def sync():
+    key = sha256(
+        b"GhostProtocol-Sync" +
+        INSTANCE_SECRET
+    )
 
-SYNC_IV = hashlib.sha256(
-    b"GhostProtocol-Sync-IV" +
-    INSTANCE_SECRET
-).digest()[:16]
-
-SYNC_KEY = hashlib.sha256(
-    b"GhostProtocol-Sync-Key" +
-    INSTANCE_SECRET
-).digest()
-
-
-def sync_plaintext():
-    return (
+    plaintext = (
         b"GP-SYNC-V3|" +
         INSTANCE_SECRET[10:26]
     )
 
+    padder = padding.PKCS7(128).padder()
 
-def sync_ciphertext():
+    padded = (
+        padder.update(plaintext) +
+        padder.finalize()
+    )
+
+    iv = secrets.token_bytes(16)
+
     cipher = Cipher(
-        algorithms.AES(SYNC_KEY),
-        modes.CBC(SYNC_IV)
+        algorithms.AES(key),
+        modes.CBC(iv),
+        backend=default_backend()
     )
 
     encryptor = cipher.encryptor()
 
-    plaintext = sync_plaintext()
+    ciphertext = (
+        encryptor.update(padded) +
+        encryptor.finalize()
+    )
 
-    pad_len = 16 - (len(plaintext) % 16)
-
-    plaintext += bytes([pad_len]) * pad_len
-
-    return encryptor.update(plaintext) + encryptor.finalize()
-
-
-@app.get("/api/sync")
-def sync():
     return jsonify({
         "algorithm": "AES-CBC",
         "block_size": 16,
-        "ciphertext": sync_ciphertext().hex(),
-        "hint": "synchronization failure classification",
-        "iv": SYNC_IV.hex(),
+        "iv": iv.hex(),
+        "ciphertext": ciphertext.hex(),
+        "hint": "the synchronization endpoint leaks padding validity",
         "version": 3
     })
 
 
-@app.post("/api/sync/check")
+@app.route("/api/sync/check", methods=["POST"])
 def sync_check():
-    body = request.get_json(silent=True) or {}
-
-    iv_hex = body.get("iv", "")
-    ciphertext_hex = body.get("ciphertext", "")
-
     try:
-        iv = bytes.fromhex(iv_hex)
-        ciphertext = bytes.fromhex(ciphertext_hex)
-    except ValueError:
-        return jsonify({"error": "malformed request"}), 400
+        data = request.get_json(force=True)
 
-    if len(iv) != 16:
-        return jsonify({"error": "malformed request"}), 400
+        iv = bytes.fromhex(data["iv"])
+        ciphertext = bytes.fromhex(data["ciphertext"])
 
-    if not ciphertext or len(ciphertext) % 16:
-        return jsonify({"error": "malformed request"}), 400
-
-    try:
-        cipher = Cipher(
-            algorithms.AES(SYNC_KEY),
-            modes.CBC(iv)
+        key = sha256(
+            b"GhostProtocol-Sync" +
+            INSTANCE_SECRET
         )
 
-        decryptor = cipher.decryptor()
-
-        plaintext = (
-            decryptor.update(ciphertext) +
-            decryptor.finalize()
+        plaintext = aes_cbc_decrypt(
+            iv,
+            ciphertext,
+            key
         )
+
+        pkcs7_unpad(plaintext)
+
+        return jsonify({
+            "valid": True
+        })
 
     except Exception:
-        return jsonify({"valid": False})
-
-    if not plaintext:
-        return jsonify({"valid": False})
-
-    pad_len = plaintext[-1]
-
-    if pad_len < 1 or pad_len > 16:
-        return jsonify({"valid": False})
-
-    if plaintext[-pad_len:] != bytes([pad_len]) * pad_len:
-        return jsonify({"valid": False})
-
-    return jsonify({"valid": True})
+        return jsonify({
+            "valid": False
+        })
 
 
-# ============================================================
-# Final stage
-#
-# The player supplies the recovered 16-byte shard.
-#
-# The server internally derives the remaining six bytes through
-# a rotating relation.  The relation itself is no longer
-# disclosed in the response.
-#
-# This preserves solvability while removing the explicit hint.
-# ============================================================
-
-def final_relation(shard):
-    suffix = INSTANCE_SECRET[26:32]
-
-    return bytes(
-        suffix[i] ^ shard[(i * 7) % 16]
-        for i in range(6)
-    )
-
-
-@app.get("/api/final")
+@app.route("/api/final")
 def final():
     shard_hex = request.args.get("shard", "")
 
     try:
         shard = bytes.fromhex(shard_hex)
     except ValueError:
-        return jsonify({"error": "invalid proof"}), 403
+        return jsonify({
+            "status": "rejected"
+        }), 400
 
     if len(shard) != 16:
-        return jsonify({"error": "invalid proof"}), 403
+        return jsonify({
+            "status": "rejected"
+        }), 400
 
     if shard != INSTANCE_SECRET[10:26]:
-        return jsonify({"error": "invalid proof"}), 403
+        return jsonify({
+            "status": "rejected"
+        }), 403
 
-    relation = final_relation(shard)
+    suffix = INSTANCE_SECRET[26:32]
+
+    relation = bytes(
+        suffix[i] ^ shard[(i * 7) % 16]
+        for i in range(6)
+    )
 
     return jsonify({
         "status": "accepted",
-        "challenge": relation.hex()
+        "next": "/api/flag",
+        "relation": relation.hex(),
+        "relation_description":
+            "suffix[i] XOR shard[(7*i) mod 16]"
     })
 
 
-# ============================================================
-# Flag
-# ============================================================
-
-@app.get("/api/flag")
+@app.route("/api/flag")
 def flag():
     shard_hex = request.args.get("shard", "")
-    challenge_hex = request.args.get("challenge", "")
+    challenge = request.args.get("challenge", "")
 
     try:
         shard = bytes.fromhex(shard_hex)
-        challenge = bytes.fromhex(challenge_hex)
+        relation = bytes.fromhex(challenge)
     except ValueError:
-        return jsonify({"error": "invalid proof"}), 403
+        return jsonify({
+            "status": "rejected"
+        }), 400
 
-    if len(shard) != 16 or len(challenge) != 6:
-        return jsonify({"error": "invalid proof"}), 403
+    if len(shard) != 16 or len(relation) != 6:
+        return jsonify({
+            "status": "rejected"
+        }), 400
 
     if shard != INSTANCE_SECRET[10:26]:
-        return jsonify({"error": "invalid proof"}), 403
+        return jsonify({
+            "status": "rejected"
+        }), 403
 
-    expected = final_relation(shard)
+    suffix = INSTANCE_SECRET[26:32]
 
-    if challenge != expected:
-        return jsonify({"error": "invalid proof"}), 403
+    expected_relation = bytes(
+        suffix[i] ^ shard[(i * 7) % 16]
+        for i in range(6)
+    )
+
+    if relation != expected_relation:
+        return jsonify({
+            "status": "rejected"
+        }), 403
 
     flag_material = hashlib.sha256(
         b"GhostProtocol-Final" +
@@ -341,16 +331,19 @@ def flag():
     ).hexdigest()
 
     return jsonify({
-        "status": "complete",
+        "status": "accepted",
         "flag": f"FLAG{{{flag_material[:32]}}}"
     })
 
 
-# ============================================================
+# ---------------------------------------------------------
+# Start
+# ---------------------------------------------------------
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "5000"))
+
     app.run(
         host="0.0.0.0",
-        port=5000,
-        debug=False
+        port=port
     )
